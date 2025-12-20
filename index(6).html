@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CK Lottery 1-Min Predictor 💎</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; background:#dbeafe; margin:0; padding:20px; }
+  h1,h2{text-align:center;color:#222;}
+  table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden;margin-top:20px;}
+  th,td{padding:10px;text-align:center;}
+  th{background:#2563eb;color:white;}
+  tr:nth-child(even){background:#f9fafb;}
+  tr:hover{background:#e0f2fe;}
+  .prediction-card{background:white;padding:20px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);margin-top:20px;text-align:center;}
+  .confidence-bar{width:100%;background:#eee;border-radius:10px;overflow:hidden;margin-top:10px;}
+  .confidence-fill{height:20px;background:linear-gradient(90deg,#22c55e,#3b82f6);color:white;text-align:right;padding-right:5px;line-height:20px;font-weight:bold;}
+  canvas{max-width:600px;margin:20px auto;display:block;background:white;padding:10px;border-radius:10px;}
+  #timerBox{position:fixed;top:20px;right:20px;background:white;padding:15px 20px;border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,0.3);font-size:18px;font-weight:bold;}
+  /* Win/Loss Styles */
+  .win { color: #22c55e; font-weight: bold; }
+  .loss { color: #ef4444; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>CK Lottery 1-Min Predictor 💎</h1>
+
+<div id="timerBox">00:00:00</div>
+
+<h2>Last 10 Results</h2>
+<table id="resultsTable">
+  <thead>
+    <tr>
+      <th>Issue</th>
+      <th>Number</th>
+      <th>Color</th>
+      <th>Status (Win/Loss)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div class="prediction-card">
+  <h2 id="prediction">Loading prediction...</h2>
+  <h3 id="nextPeriod">Next Period: --</h3>
+  <div class="confidence-bar">
+    <div id="confidenceFill" class="confidence-fill">0%</div>
+  </div>
+</div>
+
+<h2>Number Frequency</h2>
+<canvas id="freqChart"></canvas>
+
+<h2>Color Trend</h2>
+<canvas id="colorChart"></canvas>
+
+<script>
+const apiUrl = "https://ckygjf6r.com/api/webapi/GetNoaverageEmerdList";
+const token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOiIxNzYyNDQxNjc5IiwibmJmIjoiMTc2MjQ0MTY3OSIsImV4cCI6IjE3NjI0NDM0NzkiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL2V4cGlyYXRpb24iOiIxMS82LzIwMjUgMTA6MDc6NTkgUE0iLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJBY2Nlc3NfVG9rZW4iLCJVc2VySWQiOiI1MjIzNjQiLCJVc2VyTmFtZSI6Ijk1OTk4MjE1MzA1NiIsIlVzZXJQaG90byI6IjgiLCJOaWNrTmFtZSI6IkpFUlJZLVhYWCIsIkFtb3VudCI6IjMuNzQiLCJJbnRlZ3JhbCI6IjAiLCJMb2dpbk1hcmsiOiJINSIsIkxvZ2luVGltZSI6IjExLzYvMjAyNSA5OjM3OjU5IFBNIiwiTG9naW5JUEFkZHJlc3MiOiI2OS4xNjAuMzEuNzciLCJEYk51bWJlciI6IjAiLCJJc3ZhbGlkYXRvciI6IjAiLCJLZXlDb2RlIjoiMjE3IiwiVG9rZW5UeXBlIjoiQWNjZXNzX1Rva2VuIiwiUGhvbmVUeXBlIjoiMSIsIlVzZXJUeXBlIjoiMCIsIlVzZXJOYW1lMiI6IiIsImlzcyI6Imp3dElzc3VlciIsImF1ZCI6ImxvdHRlcnlUaWNrZXQifQ.mAOYGNvbHPjG7yMZGeXl3lX3oOtXpHpA0SS_f01W8LI";
+
+const payload = {
+  pageSize: 10, // ၂၀ လောက်ယူမှ အရင် result တွေကို status တွက်လို့ရမှာမို့ပါ
+  pageNo: 1, typeId: 1, language: 0,
+  random: "9546d5a483ab4dad9db56783ea807bbe",
+  signature: "4806CE2EF2496C1480BD6517F42F6D74",
+  timestamp: Math.floor(Date.now() / 1000)
+};
+
+let freqChart, colorChart;
+
+// Prediction logic (ခန့်မှန်းချက်ထုတ်ပေးရန်)
+function getPrediction(list) {
+  const count = {};
+  list.forEach((i, idx) => count[i.number] = (count[i.number] || 0) + (idx + 1));
+  let best = Object.keys(count).reduce((a,b)=> count[a]>count[b]?a:b);
+  const sb = best <= 4 ? "Small" : "Big";
+  const confidence = Math.floor((count[best]/(list.length*list.length))*100);
+  return { best, sb, confidence: Math.min(confidence, 99) };
+}
+
+// Win/Loss ကို အရင် result တွေအပေါ်မူတည်ပြီး ခန့်မှန်းတွက်ချက်ခြင်း
+function checkWinLoss(item, index, fullList) {
+    if (index === fullList.length - 1) return "-"; // နောက်ဆုံး data အတွက် ခန့်မှန်းချက်မရှိသေးပါ
+    
+    // အရင်အပတ်က data တွေကိုသုံးပြီး ခန့်မှန်းချက်ထုတ်ကြည့်မယ်
+    const previousData = fullList.slice(index + 1);
+    const pred = getPrediction(previousData);
+    
+    const actualNumber = parseInt(item.number);
+    const actualSB = actualNumber <= 4 ? "Small" : "Big";
+    
+    // ခန့်မှန်းချက်နဲ့ တကယ်ထွက်တာ တူ/မတူ စစ်ဆေးခြင်း
+    if (actualSB === pred.sb) {
+        return '<span class="win">WIN ✅</span>';
+    } else {
+        return '<span class="loss">LOSS ❌</span>';
+    }
+}
+
+// Update table
+function updateTable(list){
+  const tbody = document.querySelector("#resultsTable tbody");
+  tbody.innerHTML="";
+  
+  // ရှေ့ဆုံး ၁၀ ခုကိုပဲ ဇယားမှာပြမယ်
+  const displayList = list.slice(0, 10);
+  
+  displayList.forEach((item, index)=>{
+    const status = checkWinLoss(item, index, list);
+    const row=document.createElement("tr");
+    row.innerHTML=`
+      <td>${item.issueNumber}</td>
+      <td>${item.number}</td>
+      <td>${item.colour}</td>
+      <td>${status}</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+// Update prediction & next period
+function updatePrediction(list){
+  const {best,sb,confidence}=getPrediction(list);
+  document.getElementById("prediction").innerText=`Next Prediction: ${sb} (${best})`;
+  const last=list[0].issueNumber;
+  const nextPeriod = (BigInt(last) + 1n).toString();
+  document.getElementById("nextPeriod").innerText=`Next Period: ${nextPeriod}`;
+  const fill=document.getElementById("confidenceFill");
+  fill.style.width=confidence+"%";
+  fill.innerText=confidence+"%";
+}
+
+// Update charts
+function updateCharts(list){
+  const freq={},colors={};
+  list.slice(0,10).forEach(i=>{
+    freq[i.number]=(freq[i.number]||0)+1;
+    i.colour.split(',').forEach(c=>colors[c]=(colors[c]||0)+1);
+  });
+  const fctx=document.getElementById("freqChart").getContext("2d");
+  const cctx=document.getElementById("colorChart").getContext("2d");
+  if(freqChart){ freqChart.destroy(); colorChart.destroy(); }
+  freqChart=new Chart(fctx,{
+    type:'bar',
+    data:{labels:Object.keys(freq),datasets:[{data:Object.values(freq),backgroundColor:'#3b82f6'}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
+  colorChart=new Chart(cctx,{
+    type:'pie',
+    data:{labels:Object.keys(colors),datasets:[{data:Object.values(colors),backgroundColor:['#ef4444','#22c55e','#8b5cf6','#facc15']}]},
+    options:{plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+// Real-time clock
+function startClock(){
+  const box=document.getElementById("timerBox");
+  setInterval(()=>{
+    const now=new Date();
+    box.innerText=now.toLocaleTimeString();
+  },1000);
+}
+
+// Fetch data
+async function loadData(){
+  try{
+    const res=await fetch(apiUrl,{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json;charset=UTF-8",
+        "Authorization":token
+      },
+      body:JSON.stringify(payload)
+    });
+    const data=await res.json();
+    const list=data.data.list;
+    updateTable(list);
+    updatePrediction(list);
+    updateCharts(list);
+  }catch(e){
+    console.error("Error fetching API:",e);
+  }
+}
+
+startClock();
+loadData();
+setInterval(loadData,6000); // ၁ မိနစ်တစ်ခါ Update လုပ်မယ်
+</script>
+</body>
+</html>
